@@ -1104,6 +1104,7 @@ class FasterUnifiedTransformer(UnifiedTransformerPretrainedModel):
 
 
 class FasterUNIMOText(UNIMOPretrainedModel):
+    is_on_export = False
     def __init__(self, model, decoding_lib=None, use_fp16_decoding=False, **kwargs):
         super(FasterUNIMOText, self).__init__(model.config)
         self._model = model
@@ -1264,6 +1265,9 @@ class FasterUNIMOText(UNIMOPretrainedModel):
             early_stopping=early_stopping,
             min_length=min_length,
         )
+        if self.is_on_export:
+            return ids[:, :, 0].transpose([1, 0])
+
         if self.trans_out:
             if decode_strategy.startswith("beam_search"):
                 ids = ids.transpose([1, 2, 0])

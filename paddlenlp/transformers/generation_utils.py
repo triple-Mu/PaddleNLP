@@ -404,6 +404,10 @@ class GenerationMixin(object):
 
     @staticmethod
     def expand_inputs_for_generation(input_ids, expand_size, attention_mask=None, **model_kwargs):
+        if expand_size == 1:
+            if attention_mask is not None:
+                model_kwargs["attention_mask"] = attention_mask
+            return input_ids, model_kwargs
 
         index = paddle.tile(
             paddle.arange(paddle.shape(input_ids)[0], dtype="int64").unsqueeze(-1), [1, expand_size]
