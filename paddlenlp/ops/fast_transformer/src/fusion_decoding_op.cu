@@ -74,7 +74,7 @@ std::vector<paddle::Tensor> decoding_kernel(
     const int& num_layer_,
     const int& start_id_,
     const int& end_id_,
-    const int64_t& max_seq_len_,
+    const int& max_seq_len_,
     const float& beam_search_diversity_rate_,
     const float& alpha,
     cudaStream_t stream) {
@@ -409,7 +409,7 @@ std::vector<paddle::Tensor> DecodingCUDAForward(
     const int& num_layer,
     const int& bos_id,
     const int& eos_id,
-    const int64_t& max_len,
+    const int& max_len,
     const float& beam_search_diversity_rate,
     const float& alpha) {
   auto stream = input.stream();
