@@ -151,6 +151,19 @@ std::vector<paddle::Tensor> unified_decoding_kernel(
   decoding_params.request_input_len = memory_max_seq_len;
   decoding_params.request_output_len = max_seq_len_;
 
+#ifdef BUILD_GPT
+  auto* model_para_desc = ModelParaDescFactory::CreateModelParaDesc(
+      head_num_,
+      size_per_head_,
+      num_layer_,
+      tensor_para_size,
+      layer_para_size,
+      layer_para_batch_size,
+      const_cast<data_t_*>(word_emb.data<data_t_>()));
+  auto& tensor_parallel_param = model_para_desc->tensor_parallel_param;
+  auto& layer_parallel_param = model_para_desc->layer_parallel_param;
+  auto seed = model_para_desc->dist(model_para_desc->gen);
+#else
   TensorParallelParam tensor_parallel_param;
   LayerParallelParam layer_parallel_param;
   tensor_parallel_param.rank = 0;
@@ -163,6 +176,7 @@ std::vector<paddle::Tensor> unified_decoding_kernel(
   layer_parallel_param.layers_per_group = num_layer_;
   layer_parallel_param.local_batch_size = batch_size_;
   int seed = -1;
+#endif
 
   if(mGlobalParams == nullptr){
     mGlobalParams = new DecoderInitParam<DataType_>[num_layer_];
