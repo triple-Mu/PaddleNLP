@@ -3273,6 +3273,7 @@ class InferUnifiedDecoding(nn.Layer):
         early_stopping=False,
         min_length=0,
     ):
+        attn_mask = paddle.cast(attn_mask, dtype="float16")
         if role_id is None:
             role_id = paddle.zeros(shape=[0], dtype="int32")
             decoder_role_id = paddle.zeros(shape=[0], dtype="int32")
@@ -3367,7 +3368,7 @@ class InferUnifiedDecoding(nn.Layer):
             forced_eos_token_id=forced_eos_token_id,
             decoding_strategy=decoding_strategy,
         )
-        return ids, output_scores
+        return ids.transpose([1, 0])# ids[:, :, 0].transpose([1, 0]) # , output_scores
 
 
 class InferMIRODecoding(nn.Layer):

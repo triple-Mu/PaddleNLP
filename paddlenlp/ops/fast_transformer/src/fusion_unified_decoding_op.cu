@@ -37,6 +37,9 @@ limitations under the License. */
 #endif
 
 
+void* mGlobalParams = nullptr;
+void *mGlobalOp = nullptr;
+
 template <paddle::DataType D>
 std::vector<paddle::Tensor> unified_decoding_kernel(
     const paddle::Tensor& input_ids,
@@ -105,28 +108,12 @@ std::vector<paddle::Tensor> unified_decoding_kernel(
     const int tensor_para_size = 1,
     const int layer_para_size = 1,
     const int layer_para_batch_size = 1) {
-  int beam_width_ = (decoding_strategy == "beam_search" ||
-                     decoding_strategy == "beam_search_v2" ||
-                     decoding_strategy == "beam_search_v3")
-                        ? beam_size
-                        : 1;
-  int candidate_num_ =
-      ("topk_sampling" == decoding_strategy ||
-       "topp_sampling" == decoding_strategy || "sampling" == decoding_strategy)
-          ? topk
-          : 1;
-  float probability_threshold_ =
-      ("topk_sampling" == decoding_strategy ||
-       "topp_sampling" == decoding_strategy || "sampling" == decoding_strategy)
-          ? topp
-          : 0.0;
+  int beam_width_ = 1;
+  int candidate_num_ = topk;
+  float probability_threshold_ = topp;
 
   auto input_ids_dims = input_ids.shape();
-  int batch_size_ = (decoding_strategy == "beam_search" ||
-                     decoding_strategy == "beam_search_v2" ||
-                     decoding_strategy == "beam_search_v3")
-                        ? input_ids_dims[0] / beam_width_
-                        : input_ids_dims[0];
+  int batch_size_ = input_ids_dims[0];
   const int memory_max_seq_len = input_ids_dims[1];
   const int memory_hidden_dim = head_num_ * size_per_head_;
   const int vocab_size = word_emb.shape()[0];
@@ -159,32 +146,11 @@ std::vector<paddle::Tensor> unified_decoding_kernel(
   decoding_params.type_id = type_id.data<int>();
   decoding_params.decoder_type_id = decoder_type_id.data<int>();
 
-  if (decoding_strategy == "beam_search" ||
-      decoding_strategy == "beam_search_v2" ||
-      decoding_strategy == "beam_search_v3") {
-    decoding_params.request_batch_size = batch_size_ * beam_width_;
-  } else if (decoding_strategy == "sampling" ||
-             decoding_strategy == "topk_sampling" ||
-             decoding_strategy == "topp_sampling") {
-    decoding_params.request_batch_size = batch_size_;
-  }
+  decoding_params.request_batch_size = batch_size_;
   decoding_params.max_input_len = memory_max_seq_len;
   decoding_params.request_input_len = memory_max_seq_len;
   decoding_params.request_output_len = max_seq_len_;
 
-#ifdef BUILD_GPT
-  auto* model_para_desc = ModelParaDescFactory::CreateModelParaDesc(
-      head_num_,
-      size_per_head_,
-      num_layer_,
-      tensor_para_size,
-      layer_para_size,
-      layer_para_batch_size,
-      const_cast<data_t_*>(word_emb.data<data_t_>()));
-  auto& tensor_parallel_param = model_para_desc->tensor_parallel_param;
-  auto& layer_parallel_param = model_para_desc->layer_parallel_param;
-  auto seed = model_para_desc->dist(model_para_desc->gen);
-#else
   TensorParallelParam tensor_parallel_param;
   LayerParallelParam layer_parallel_param;
   tensor_parallel_param.rank = 0;
@@ -197,10 +163,14 @@ std::vector<paddle::Tensor> unified_decoding_kernel(
   layer_parallel_param.layers_per_group = num_layer_;
   layer_parallel_param.local_batch_size = batch_size_;
   int seed = -1;
-#endif
 
-  DecoderInitParam<DataType_>* params =
-      new DecoderInitParam<DataType_>[num_layer_];
+  if(mGlobalParams == nullptr){
+    mGlobalParams = new DecoderInitParam<DataType_>[num_layer_];
+  }
+
+  DecoderInitParam<DataType_>* params = (DecoderInitParam<DataType_>*) mGlobalParams;
+//  DecoderInitParam<DataType_>* params =
+//      new DecoderInitParam<DataType_>[num_layer_];
 
   // Allow python passing partial weights for model parallel.
   int inner_coeff =
@@ -221,17 +191,8 @@ std::vector<paddle::Tensor> unified_decoding_kernel(
     params[layer_idx].cublas_handle = CublasHandle::GetInstance()->cublas_handle_;
     params[layer_idx].cublaslt_handle = CublasHandle::GetInstance()->cublaslt_handle_;
 
-    if (decoding_strategy == "beam_search" ||
-        decoding_strategy == "beam_search_v2" ||
-        decoding_strategy == "beam_search_v3") {
-      params[layer_idx].request_batch_size = batch_size_ * beam_width_;
-      params[layer_idx].request_max_mem_seq_len = memory_max_seq_len;
-    } else if (decoding_strategy == "sampling" ||
-               decoding_strategy == "topk_sampling" ||
-               decoding_strategy == "topp_sampling") {
-      params[layer_idx].request_batch_size = batch_size_;
-      params[layer_idx].request_max_mem_seq_len = memory_max_seq_len;
-    }
+    params[layer_idx].request_batch_size = batch_size_;
+    params[layer_idx].request_max_mem_seq_len = memory_max_seq_len;
 
     // self attn
     params[layer_idx].self_layernorm.gamma = reinterpret_cast<const DataType_*>(
@@ -337,133 +298,78 @@ std::vector<paddle::Tensor> unified_decoding_kernel(
   ActivationType activate =
       (hidden_act == "gelu") ? ActivationType::GELU : ActivationType::RELU;
 
-  int finished_candidate_num_ =
-      ("beam_search_v3" == decoding_strategy) ? beam_width_ : beam_width_ * 2;
+  int finished_candidate_num_ = beam_width_ * 2;
 
-  if ("beam_search" == decoding_strategy) {
-    DecodingBeamsearch<DecodingTraits_::OpType>* unified_decoding_beam_search_;
-
-    unified_decoding_beam_search_ =
-        new DecodingBeamsearch<DecodingTraits_::OpType>(
-            allocator_,
-            batch_size_,
-            beam_width_,
-            max_seq_len_,
-            head_num_,
-            size_per_head_,
-            vocab_size,
-            num_layer_,
-            memory_hidden_dim,
-            memory_max_seq_len,
-            start_id_,
-            end_id_,
-            beam_search_diversity_rate_,
-            true,        /*is_fuse_topk_softMax*/
-            true,        /*is_fuse_qkv*/
-            false,       /*keep_alive_beam*/
-            len_penalty, /*alpha not used for this case*/
-            normalize_before,
-            0, /*pos_offset BART only for now*/
-            activate,
-            pos_bias,
-            true, /*prefix_lm*/
-            -1,  /*finished_candidate_num*/
-            false,  /*early_stopping*/
-            false,  /*is_mbart*/
-            min_length,
-            inner_coeff);
-    unified_decoding_beam_search_->set_tensor_parallel_param(
-        tensor_parallel_param);
-    unified_decoding_beam_search_->set_layer_parallel_param(
-        layer_parallel_param);
-    unified_decoding_beam_search_->forward_context(params, decoding_params);
-    unified_decoding_beam_search_->forward(params, decoding_params);
-
-    delete unified_decoding_beam_search_;
-  } else if ("beam_search_v2" == decoding_strategy ||
-             "beam_search_v3" == decoding_strategy) {
-    DecodingBeamsearch<DecodingTraits_::OpType>* unified_decoding_beam_search_;
-
-    unified_decoding_beam_search_ =
-        new DecodingBeamsearch<DecodingTraits_::OpType>(
-            allocator_,
-            batch_size_,
-            beam_width_,
-            max_seq_len_,
-            head_num_,
-            size_per_head_,
-            vocab_size,
-            num_layer_,
-            memory_hidden_dim,
-            memory_max_seq_len,
-            start_id_,
-            end_id_,
-            beam_search_diversity_rate_,
-            true, /*is_fuse_topk_softMax*/
-            true, /*is_fuse_qkv*/
-            true, /*keep_alive_beam*/
-            len_penalty,
-            normalize_before,
-            0, /*pos_offset BART only for now*/
-            activate,
-            pos_bias,
-            true, /*prefix_lm*/
-            finished_candidate_num_,
-            early_stopping,
-            false,  /*is_mbart*/
-            min_length,
-            inner_coeff);
-    unified_decoding_beam_search_->forward_context(params, decoding_params);
-    unified_decoding_beam_search_->forward(params, decoding_params);
-
-    delete unified_decoding_beam_search_;
-  } else if ("topk_sampling" == decoding_strategy ||
-             "topp_sampling" == decoding_strategy ||
-             "sampling" == decoding_strategy) {
-    DecodingSampling<DecodingTraits_::OpType>* unified_decoding_sampling_;
-
-    unified_decoding_sampling_ = new DecodingSampling<DecodingTraits_::OpType>(
-        allocator_,
-        batch_size_,
-        max_seq_len_,
-        head_num_,
-        size_per_head_,
-        vocab_size,
-        num_layer_,
-        memory_hidden_dim,
-        memory_max_seq_len,
-        start_id_,
-        end_id_,
-        candidate_num_,
-        probability_threshold_,
-        true, /*is_fuse_qkv*/
-        normalize_before,
-        0, /*pos_offset BART only for now*/
-        activate,
-        pos_bias,
-        temperature,
-        1.0,   /*repeat_penalty*/
-        true,  /*prefix_lm*/
-        false, /*is_mbart*/
-        min_length,
-        inner_coeff,
-        seed,
-        tensor_para_size,
-        layer_para_size);
-    unified_decoding_sampling_->set_tensor_parallel_param(
-        tensor_parallel_param);
-    unified_decoding_sampling_->set_layer_parallel_param(layer_parallel_param);
-    unified_decoding_sampling_->forward_context(params, decoding_params);
-    unified_decoding_sampling_->forward(params, decoding_params);
-
-    delete unified_decoding_sampling_;
-  } else {
-    PD_THROW(
-        "Only beam_search, beam_search_v2, topk_sampling and topp_sampling are "
-        "supported for "
-        "FastGeneration. ");
+  if(mGlobalOp == nullptr){
+      mGlobalOp = new DecodingSampling<DecodingTraits_::OpType>(
+          allocator_,
+          batch_size_,
+          max_seq_len_,
+          head_num_,
+          size_per_head_,
+          vocab_size,
+          num_layer_,
+          memory_hidden_dim,
+          memory_max_seq_len,
+          start_id_,
+          end_id_,
+          candidate_num_,
+          probability_threshold_,
+          true, /*is_fuse_qkv*/
+          normalize_before,
+          0, /*pos_offset BART only for now*/
+          activate,
+          pos_bias,
+          temperature,
+          1.0,   /*repeat_penalty*/
+          true,  /*prefix_lm*/
+          false, /*is_mbart*/
+          min_length,
+          inner_coeff,
+          seed,
+          tensor_para_size,
+          layer_para_size);
   }
-  delete[] params;
+
+  DecodingSampling<DecodingTraits_::OpType>* unified_decoding_sampling_ = (DecodingSampling<DecodingTraits_::OpType>*)mGlobalOp;
+//  DecodingSampling<DecodingTraits_::OpType>* unified_decoding_sampling_;
+
+//  unified_decoding_sampling_ = new DecodingSampling<DecodingTraits_::OpType>(
+//      allocator_,
+//      batch_size_,
+//      max_seq_len_,
+//      head_num_,
+//      size_per_head_,
+//      vocab_size,
+//      num_layer_,
+//      memory_hidden_dim,
+//      memory_max_seq_len,
+//      start_id_,
+//      end_id_,
+//      candidate_num_,
+//      probability_threshold_,
+//      true, /*is_fuse_qkv*/
+//      normalize_before,
+//      0, /*pos_offset BART only for now*/
+//      activate,
+//      pos_bias,
+//      temperature,
+//      1.0,   /*repeat_penalty*/
+//      true,  /*prefix_lm*/
+//      false, /*is_mbart*/
+//      min_length,
+//      inner_coeff,
+//      seed,
+//      tensor_para_size,
+//      layer_para_size);
+  unified_decoding_sampling_->set_tensor_parallel_param(
+      tensor_parallel_param);
+  unified_decoding_sampling_->set_layer_parallel_param(layer_parallel_param);
+  unified_decoding_sampling_->forward_context(params, decoding_params);
+  unified_decoding_sampling_->forward(params, decoding_params);
+
+//  delete unified_decoding_sampling_;
+//  delete[] params;
 
   return {output_ids, parent_ids, sequence_length, output_scores};
 }

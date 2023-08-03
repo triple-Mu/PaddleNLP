@@ -49,7 +49,6 @@ if(ON_INFER)
   endif()
 
   include_directories("${PADDLE_LIB}/")
-  include_directories("${PADDLE_LIB}/paddle/include")
   set(PADDLE_LIB_THIRD_PARTY_PATH "${PADDLE_LIB}/third_party/install/")
   include_directories("${PADDLE_LIB_THIRD_PARTY_PATH}protobuf/include")
   include_directories("${PADDLE_LIB_THIRD_PARTY_PATH}glog/include")
