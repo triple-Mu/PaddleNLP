@@ -166,24 +166,24 @@ if(ON_INFER)
 
   cuda_add_library(decoding_infer_op ${decoding_op_files} SHARED)
   set(ROOT /workspace/paddlenlp/ops/build/third-party/build/fastertransformer/lib)
-  list(APPEND infer_libs
-          ${ROOT}/libattention_kernels.a
-          ${ROOT}/libcuda_int8_kernels.a
-          ${ROOT}/libcuda_kernels.a
-          ${ROOT}/libdecoder.a
-          ${ROOT}/libdecoding.a
-          ${ROOT}/libencoder.a
-          ${ROOT}/libencoder_gemm_func.a
-          ${ROOT}/libencoder_igemm_func.a
-          ${ROOT}/libnccl_utils.a
-          ${ROOT}/libnvtx_utils.a
-          ${ROOT}/libonline_softmax_beamsearch.a
-          ${ROOT}/libtopk.a
-          ${ROOT}/libtransformer_kernels.a
-          -lcublas -lcudart
-          )
+#  list(APPEND infer_libs
+#          ${ROOT}/libattention_kernels.a
+#          ${ROOT}/libcuda_int8_kernels.a
+#          ${ROOT}/libcuda_kernels.a
+#          ${ROOT}/libdecoder.a
+#          ${ROOT}/libdecoding.a
+#          ${ROOT}/libencoder.a
+#          ${ROOT}/libencoder_gemm_func.a
+#          ${ROOT}/libencoder_igemm_func.a
+#          ${ROOT}/libnccl_utils.a
+#          ${ROOT}/libnvtx_utils.a
+#          ${ROOT}/libonline_softmax_beamsearch.a
+#          ${ROOT}/libtopk.a
+#          ${ROOT}/libtransformer_kernels.a
+#          -lcublas -lcudart ${ft_lib_link}
+#          )
 #  target_link_directories(decoding_infer_op PUBLIC )
-  target_link_libraries(decoding_infer_op ${infer_libs})
+#  target_link_libraries(decoding_infer_op ${infer_libs})
   add_dependencies(decoding_infer_op extern_${THIRD_PARTY_NAME} boost)
 
   string(REPLACE "/" ";" DEMO_PATH ${DEMO})
@@ -234,7 +234,8 @@ if(ON_INFER)
   endif()
 
   target_link_libraries(${DEMO_NAME} ${DEPS})
-else ()
+
+else(ON_INFER)
   if(NOT PY_CMD)
     set(PYTHON_PATH "python" CACHE STRING "Python path")
   else()
@@ -332,5 +333,5 @@ else ()
   add_library(decoding_op SHARED ${decoding_op_files})
   add_dependencies(decoding_op extern_${THIRD_PARTY_NAME} boost)
   target_link_libraries(decoding_op -lcublas -lcudart -ltopk ${lib_link} ${ft_lib_link})
-#  target_link_libraries(decoding_infer_op -lcublas -lcudart -ltopk ${ft_lib_link})
+  target_link_libraries(decoding_infer_op -lcublas -lcudart -ltopk ${ft_lib_link})
 endif()
