@@ -68,7 +68,7 @@ std::vector<paddle::Tensor> GetPaddingOffsetV2(const paddle::Tensor& input_ids,
     auto padding_offset = paddle::full({token_num_data}, 0, paddle::DataType::INT32, input_ids.place());
     auto cu_seqlens_q = paddle::full({bsz + 1}, 0, paddle::DataType::INT32, input_ids.place());
     auto cu_seqlens_k = paddle::full({bsz + 1}, 0, paddle::DataType::INT32, input_ids.place());
-    int blockSize = min((token_num_data + 32 - 1) / 32 * 32, 128);
+    int blockSize = std::min((token_num_data + 32 - 1) / 32 * 32, 128);
     GetPaddingOffsetKernelV2<<<bsz, 128, 0, cu_stream>>>(
       padding_offset.data<int>(), 
       cum_offsets_out.data<int>(),

@@ -300,6 +300,7 @@ from .deberta_v2.configuration import *
 from .qwen2 import *
 from .qwen2_moe import *
 from .yuan import *
+from .mgen import *
 from .mamba.configuration import *
 from .mamba.modeling import *
 from .mamba.tokenizer import *

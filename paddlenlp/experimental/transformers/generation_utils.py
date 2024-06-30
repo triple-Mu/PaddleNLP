@@ -274,7 +274,8 @@ class GenerationInferenceModel(GenerationMixin):
 
         # fake temp next_tokens
         batch = input_ids.shape[0] if input_ids is not None else inputs_embeds.shape[0]
-        next_tokens = paddle.full(shape=[batch, 1], dtype="int32", fill_value=0)
+        output_ids = paddle.empty([batch, 0], dtype="int64")
+        next_tokens = paddle.full(shape=[batch, 1], dtype="int64", fill_value=0)
 
         # let inputs_embeds enter into model_kwargs.
         # because the code below directly use the model_kwargs as a parameter without using inputs_embeds.
@@ -345,15 +346,15 @@ class GenerationInferenceModel(GenerationMixin):
             else:
                 model_kwargs["all_input_ids"] = paddle.concat([model_kwargs["all_input_ids"], next_tokens], axis=1)
 
-            from paddlenlp_ops import save_with_output
-
-            save_with_output(
-                next_tokens,
-                batch_idx,
-                step_idx_ori,
-                "real_time_save.temp_ids",
-                self.config.tensor_parallel_rank,
-            )
+            # from paddlenlp_ops import save_with_output
+            #
+            # save_with_output(
+            #     next_tokens,
+            #     batch_idx,
+            #     step_idx_ori,
+            #     "real_time_save.temp_ids",
+            #     self.config.tensor_parallel_rank,
+            # )
 
             return next_tokens, model_kwargs
 
@@ -367,6 +368,7 @@ class GenerationInferenceModel(GenerationMixin):
             step_idx_ori,
             model_kwargs,
         )
+        output_ids = paddle.concat([output_ids, next_tokens], axis=-1)
         step_idx_ori += 1
 
         # gives it a value, means we will entered into decoder phase.
@@ -384,15 +386,17 @@ class GenerationInferenceModel(GenerationMixin):
                 step_idx_ori,
                 model_kwargs,
             )
+            output_ids = paddle.concat([output_ids, next_tokens], axis=-1)
             step_idx_ori += 1
 
-        return (
-            next_tokens,
-            model_kwargs["step_idx"],
-            paddle.cast(model_kwargs["stop_flags"], "int32"),
-            model_kwargs["seq_len_decoder"],
-            model_kwargs["tgt_pos"],
-        )
+        # return (
+        #     next_tokens,
+        #     model_kwargs["step_idx"],
+        #     paddle.cast(model_kwargs["stop_flags"], "int32"),
+        #     model_kwargs["seq_len_decoder"],
+        #     model_kwargs["tgt_pos"],
+        # )
+        return output_ids
 
 
 class GenerationBlockInferenceModel(GenerationMixin):

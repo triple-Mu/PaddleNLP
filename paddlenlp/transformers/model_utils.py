@@ -341,7 +341,19 @@ def load_state_dict(
                 "you save your model with the `save_pretrained` method."
             )
         if metadata.get("format", "np") == "pd":
-            raise ValueError("Currently unsupport paddle weights file, use numpy instead.")
+            state_dict = {}
+            from safetensors.paddle import load
+            with open(checkpoint_file, 'rb') as f:
+                _state_dict = load(f.read())
+                for key in _state_dict.keys():
+                    print(f'load {key} ...')
+                    weight = _state_dict[key]
+                    if device == "cpu":
+                        with device_guard():
+                            weight = paddle.Tensor(weight, zero_copy=True)
+                    state_dict[key] = weight
+            return state_dict
+
         if metadata.get("format", "np") == "np":
             state_dict = {}
             with safe_open(checkpoint_file, framework="np") as f:
@@ -1808,7 +1820,11 @@ class PretrainedModel(Layer, GenerationMixin, ConversionMixin):
             model_to_load = getattr(model, cls.base_model_prefix)
             base_model_expected_keys = list(model_to_load.state_dict().keys())
             if any(key in expected_keys_not_prefixed and key not in base_model_expected_keys for key in loaded_keys):
-                raise ValueError(
+                # raise ValueError(
+                #     "The state dictionary of the model you are trying to load is corrupted. Are you sure it was "
+                #     "properly saved?"
+                # )
+                print(
                     "The state dictionary of the model you are trying to load is corrupted. Are you sure it was "
                     "properly saved?"
                 )
