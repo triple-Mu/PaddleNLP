@@ -636,7 +636,7 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
     ) -> paddle.Tensor:
 
         inputs_embeds = inputs_embeds.cast("float16")
-        seq_length = 284
+        seq_length = paddle.shape(inputs_embeds)[1]
         max_seq_length = 1024
 
         attention_mask = paddle.zeros([1, 1, max_seq_length, max_seq_length], dtype="float16")
@@ -726,7 +726,7 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
 
         input_spec = [
             paddle.static.InputSpec(
-                shape=[1, 284, 4096], dtype="float32", name="image_features"
+                shape=[1, None, 4096], dtype="float32", name="image_features"
             )  # image_features
         ]  # cache_kvs
 
