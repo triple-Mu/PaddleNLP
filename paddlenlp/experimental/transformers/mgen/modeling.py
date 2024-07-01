@@ -639,27 +639,27 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
         seq_length = paddle.shape(inputs_embeds)[1]
         max_seq_length = 1024
 
-        attention_mask = paddle.zeros([1, 1, max_seq_length, max_seq_length], dtype="float16")
+        attention_mask = paddle.full([1, 1, max_seq_length, max_seq_length], 0, dtype="float16")
         attention_mask[:, :, :seq_length, :seq_length] = paddle.tril(
             paddle.ones([1, 1, seq_length, seq_length], dtype="float16"))
         position_ids = paddle.arange(0, seq_length, dtype="int64")[None]
-        penalty_score = paddle.ones([1, 1], dtype="float32")
-        frequency_score = paddle.zeros([1, 1], dtype="float32")
-        presence_score = paddle.zeros([1, 1], dtype="float32")
-        min_length = paddle.ones([1, 1], dtype="int64")
+        penalty_score = paddle.full([1, 1], 1.0, dtype="float32")
+        frequency_score = paddle.full([1, 1], 0.0, dtype="float32")
+        presence_score = paddle.full([1, 1], 0.0, dtype="float32")
+        min_length = paddle.full([1, 1], 1, dtype="int64")
         max_length = paddle.full([1, 1], max_seq_length - seq_length, dtype="int64")
-        temperature = paddle.ones([1, 1], dtype="float32")
-        top_p = paddle.zeros([1, 1], dtype="float32")
+        temperature = paddle.full([1, 1], 1.0, dtype="float32")
+        top_p = paddle.full([1, 1], 0.0, dtype="float32")
         eos_token_id = paddle.to_tensor([151645, 151643], dtype="int64")
         seq_len_encoder = paddle.full([1, 1], seq_length, dtype="int32")
         seq_len_decoder = paddle.full([1, 1], seq_length, dtype="int32")
-        step_idx = paddle.zeros([1, 1], dtype="int64")
-        stop_flags = paddle.zeros([1, 1], dtype="bool")
+        step_idx = paddle.full([1, 1], 0, dtype="int64")
+        stop_flags = paddle.full([1, 1], False, dtype="bool")
         tgt_ids = paddle.full([1, 1], -123, dtype="int64")
         tgt_pos = paddle.full([1, 1], seq_length - 1, dtype="int64")
-        tgt_generation_mask = paddle.ones([1, 1, 1, max_seq_length], dtype="float16")
+        tgt_generation_mask = paddle.full([1, 1, 1, max_seq_length], 1.0, dtype="float16")
         pre_ids = paddle.full([1, max_seq_length], -100, dtype="int64")
-        stop_nums = paddle.ones([1, ], dtype="int64")
+        stop_nums = paddle.full([1, ], 1, dtype="int64")
 
         # init cache_kvs
         cache_kvs = []
@@ -693,10 +693,6 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
         return outputs
 
     def to_static_v2(self, output_path: str, config: dict):
-        batch_size = 1
-        seq_length = 284
-        max_seq_length = 1024
-
         ## 1,286 [151857 at 18] [151858 at 275] len=286
         # input_ids = [151644, 8948, 198, 2610, 525, 264, 10950, 17847, 13, 151645, 198, 151644, 872, 198, 24669, 220, 16,
         #              25, 151857, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
@@ -727,8 +723,8 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
         input_spec = [
             paddle.static.InputSpec(
                 shape=[1, None, 4096], dtype="float32", name="image_features"
-            )  # image_features
+            ),  # image_features
         ]  # cache_kvs
 
-        model = paddle.jit.to_static(self.export, input_spec=input_spec, full_graph=True)
+        model = paddle.jit.to_static(self.export, input_spec=input_spec)
         paddle.jit.save(model, output_path, skip_prune_program=True)
