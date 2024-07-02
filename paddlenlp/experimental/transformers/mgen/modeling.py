@@ -629,6 +629,85 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
         model = paddle.jit.to_static(self.generate_text_with_image_features, input_spec=input_spec)
         paddle.jit.save(model, output_path, skip_prune_program=True)
 
+    def init_constant(self, name: str, value: paddle.Tensor):
+        const = paddle.create_parameter(
+            name=f'triplemu_add_{name}',
+            shape=value.shape,
+            dtype=value.dtype,
+            default_initializer=nn.initializer.Constant(0.0),
+        )
+        const.set_value(value)
+        setattr(self, f'_{name}', const)
+
+    def init_constants(self):
+        seq_length = 286
+        max_seq_length = 1024
+
+        attention_mask = paddle.full([1, 1, max_seq_length, max_seq_length], 0, dtype="float16")
+        attention_mask[:, :, :seq_length, :seq_length] = paddle.tril(
+            paddle.ones([1, 1, seq_length, seq_length], dtype="float16"))
+
+        self.init_constant('attention_mask', attention_mask)
+
+        position_ids = paddle.arange(0, seq_length, dtype="int64")[None]
+        self.init_constant('position_ids', position_ids)
+
+        penalty_score = paddle.full([1, 1], 1.0, dtype="float32")
+        self.init_constant('penalty_score', penalty_score)
+
+        frequency_score = paddle.full([1, 1], 0.0, dtype="float32")
+        self.init_constant('frequency_score', frequency_score)
+
+        presence_score = paddle.full([1, 1], 0.0, dtype="float32")
+        self.init_constant('presence_score', presence_score)
+
+        min_length = paddle.full([1, 1], 1, dtype="int64")
+        self.init_constant('min_length', min_length)
+
+        max_length = paddle.full([1, 1], max_seq_length - seq_length, dtype="int64")
+        self.init_constant('max_length', max_length)
+
+        temperature = paddle.full([1, 1], 1.0, dtype="float32")
+        self.init_constant('temperature', temperature)
+
+        top_p = paddle.full([1, 1], 0.0, dtype="float32")
+        self.init_constant('top_p', top_p)
+
+        eos_token_id = paddle.to_tensor([151645, 151643], dtype="int64")
+        self.init_constant('eos_token_id', eos_token_id)
+
+        seq_len_encoder = paddle.full([1, 1], seq_length, dtype="int32")
+        self.init_constant('seq_len_encoder', seq_len_encoder)
+
+        seq_len_decoder = paddle.full([1, 1], seq_length, dtype="int32")
+        self.init_constant('seq_len_decoder', seq_len_decoder)
+
+        step_idx = paddle.full([1, 1], 0, dtype="int64")
+        self.init_constant('step_idx', step_idx)
+
+        stop_flags = paddle.full([1, 1], False, dtype="bool")
+        self.init_constant('stop_flags', stop_flags)
+
+        tgt_ids = paddle.full([1, 1], -123, dtype="int64")
+        self.init_constant('tgt_ids', tgt_ids)
+
+        tgt_pos = paddle.full([1, 1], seq_length - 1, dtype="int64")
+        self.init_constant('tgt_pos', tgt_pos)
+
+        tgt_generation_mask = paddle.full([1, 1, 1, max_seq_length], 1.0, dtype="float16")
+        self.init_constant('tgt_generation_mask', tgt_generation_mask)
+
+        pre_ids = paddle.full([1, max_seq_length], -100, dtype="int64")
+        self.init_constant('pre_ids', pre_ids)
+
+        stop_nums = paddle.full([1, ], 1, dtype="int64")
+        self.init_constant('stop_nums', stop_nums)
+
+        # init cache_kvs
+        for i in range(32):
+            kv_cache = paddle.zeros([2, 1, 32, max_seq_length, 128], dtype="float16")
+            self.init_constant(f'kv_cache_{i}', kv_cache)
+
     @paddle.no_grad()
     def export(
             self,
@@ -636,36 +715,31 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
     ) -> paddle.Tensor:
 
         inputs_embeds = inputs_embeds.cast("float16")
-        seq_length = paddle.shape(inputs_embeds)[1]
-        max_seq_length = 1024
 
-        attention_mask = paddle.full([1, 1, max_seq_length, max_seq_length], 0, dtype="float16")
-        attention_mask[:, :, :seq_length, :seq_length] = paddle.tril(
-            paddle.ones([1, 1, seq_length, seq_length], dtype="float16"))
-        position_ids = paddle.arange(0, seq_length, dtype="int64")[None]
-        penalty_score = paddle.full([1, 1], 1.0, dtype="float32")
-        frequency_score = paddle.full([1, 1], 0.0, dtype="float32")
-        presence_score = paddle.full([1, 1], 0.0, dtype="float32")
-        min_length = paddle.full([1, 1], 1, dtype="int64")
-        max_length = paddle.full([1, 1], max_seq_length - seq_length, dtype="int64")
-        temperature = paddle.full([1, 1], 1.0, dtype="float32")
-        top_p = paddle.full([1, 1], 0.0, dtype="float32")
-        eos_token_id = paddle.to_tensor([151645, 151643], dtype="int64")
-        seq_len_encoder = paddle.full([1, 1], seq_length, dtype="int32")
-        seq_len_decoder = paddle.full([1, 1], seq_length, dtype="int32")
-        step_idx = paddle.full([1, 1], 0, dtype="int64")
-        stop_flags = paddle.full([1, 1], False, dtype="bool")
-        tgt_ids = paddle.full([1, 1], -123, dtype="int64")
-        tgt_pos = paddle.full([1, 1], seq_length - 1, dtype="int64")
-        tgt_generation_mask = paddle.full([1, 1, 1, max_seq_length], 1.0, dtype="float16")
-        pre_ids = paddle.full([1, max_seq_length], -100, dtype="int64")
-        stop_nums = paddle.full([1, ], 1, dtype="int64")
+        attention_mask = self._attention_mask
+        position_ids = self._position_ids
+        penalty_score = self._penalty_score
+        frequency_score = self._frequency_score
+        presence_score = self._presence_score
+        min_length = self._min_length
+        max_length = self._max_length
+        temperature = self._temperature
+        top_p = self._top_p
+        eos_token_id = self._eos_token_id
+        seq_len_encoder = self._seq_len_encoder
+        seq_len_decoder = self._seq_len_decoder
+        step_idx = self._step_idx
+        stop_flags = self._stop_flags
+        tgt_ids = self._tgt_ids
+        tgt_pos = self._tgt_pos
+        tgt_generation_mask = self._tgt_generation_mask
+        pre_ids = self._pre_ids
+        stop_nums = self._stop_nums
 
         # init cache_kvs
         cache_kvs = []
         for i in range(32):
-            kv_cache = paddle.zeros([2, 1, 32, max_seq_length, 128], dtype="float16")
-            cache_kvs.append(kv_cache)
+            cache_kvs.append(getattr(self, f'_kv_cache_{i}'))
 
         outputs = self.generate(
             inputs_embeds=inputs_embeds,
@@ -693,36 +767,10 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
         return outputs
 
     def to_static_v2(self, output_path: str, config: dict):
-        ## 1,286 [151857 at 18] [151858 at 275] len=286
-        # input_ids = [151644, 8948, 198, 2610, 525, 264, 10950, 17847, 13, 151645, 198, 151644, 872, 198, 24669, 220, 16,
-        #              25, 151857, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859, 151859,
-        #              151859, 151859, 151859, 151859, 151859, 151858, 198, 14880, 53481, 45930, 43815, 151645, 198,
-        #              151644, 77091, 198]
-        # image_features = paddle.randn([1, 284, 4096], dtype="float32")
-
+        self.init_constants()
         input_spec = [
             paddle.static.InputSpec(
-                shape=[1, None, 4096], dtype="float32", name="image_features"
+                shape=[1, 286, 4096], dtype="float32", name="image_features"
             ),  # image_features
         ]  # cache_kvs
 
