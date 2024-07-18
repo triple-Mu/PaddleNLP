@@ -165,6 +165,13 @@ class MGenInferenceModel(MGenPretrainedModel):
     @paddle.no_grad()
     def set_state_dict(self, state_dict):
         dtype = paddle.get_default_dtype()
+
+        if self.vocab_size == 21344:
+            import numpy as np
+            all_ids = np.load('/mnt/data/cangshui/triplemu/llm_convert/all_ids.npy')
+            all_ids = paddle.to_tensor(all_ids, dtype='int32')
+            state_dict["mgen.wte.weight"] = state_dict["mgen.wte.weight"][all_ids]
+
         wte_weight = paddle.to_tensor(state_dict["mgen.wte.weight"], dtype=dtype)
         ln_f_weight = paddle.to_tensor(state_dict["mgen.ln_f.weight"], dtype=self.ln_f.weight.dtype)
         self.wte.weight.set_value(wte_weight)
@@ -508,6 +515,13 @@ class MGenForCausalLMInferenceModel(GenerationInferenceModel, MGenPretrainedMode
     def set_state_dict(self, state_dict):
         if "lm_head.weight" in state_dict:
             lm_head_weight = paddle.to_tensor(state_dict["lm_head.weight"], dtype=self.lm_head.weight.dtype)
+
+            if self.mgen.vocab_size == 21344:
+                import numpy as np
+                all_ids = np.load('/mnt/data/cangshui/triplemu/llm_convert/all_ids.npy')
+                all_ids = paddle.to_tensor(all_ids, dtype='int32')
+                lm_head_weight = paddle.gather(lm_head_weight, all_ids, axis=1)
+
             self.lm_head.weight.set_value(lm_head_weight)
         self.mgen.set_state_dict({k: state_dict[k] for k in state_dict.keys()})
 
@@ -640,7 +654,7 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
         setattr(self, f'_{name}', const)
 
     def init_constants(self):
-        seq_length = 286
+        seq_length = 288
         max_seq_length = 1024
 
         attention_mask = paddle.full([1, 1, max_seq_length, max_seq_length], 0, dtype="float16")
@@ -674,6 +688,11 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
         self.init_constant('top_p', top_p)
 
         eos_token_id = paddle.to_tensor([151645, 151643], dtype="int64")
+
+        if self.mgen.vocab_size == 21344:
+            print(self.mgen.vocab_size)
+            eos_token_id = paddle.to_tensor([21343, 21342], dtype="int64")
+
         self.init_constant('eos_token_id', eos_token_id)
 
         seq_len_encoder = paddle.full([1, 1], seq_length, dtype="int32")
@@ -685,7 +704,7 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
         step_idx = paddle.full([1, 1], 0, dtype="int64")
         self.init_constant('step_idx', step_idx)
 
-        stop_flags = paddle.full([1, 1], False, dtype="bool")
+        stop_flags = paddle.full([1, 1], 0, dtype="int32")
         self.init_constant('stop_flags', stop_flags)
 
         tgt_ids = paddle.full([1, 1], -123, dtype="int64")
@@ -711,11 +730,14 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
     @paddle.no_grad()
     def export(
             self,
-            inputs_embeds: paddle.Tensor,  # [bs, 284, 4096]
+            inputs_embeds: paddle.Tensor,  # [bs, 288, 4096]
     ) -> paddle.Tensor:
+
+        bs = paddle.shape(inputs_embeds)[0]
 
         inputs_embeds = inputs_embeds.cast("float16")
 
+        '''
         attention_mask = self._attention_mask
         position_ids = self._position_ids
         penalty_score = self._penalty_score
@@ -735,11 +757,34 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
         tgt_generation_mask = self._tgt_generation_mask
         pre_ids = self._pre_ids
         stop_nums = self._stop_nums
+        '''
+
+        attention_mask = self._attention_mask.tile([bs, 1, 1, 1])
+        position_ids = self._position_ids.tile([bs, 1])
+        penalty_score = self._penalty_score.tile([bs, 1])
+        frequency_score = self._frequency_score.tile([bs, 1])
+        presence_score = self._presence_score.tile([bs, 1])
+        min_length = self._min_length.tile([bs, 1])
+        max_length = self._max_length.tile([bs, 1])
+        temperature = self._temperature.tile([bs, 1])
+        top_p = self._top_p.tile([bs, 1])
+        eos_token_id = self._eos_token_id
+        seq_len_encoder = self._seq_len_encoder.tile([bs, 1])
+        seq_len_decoder = self._seq_len_decoder.tile([bs, 1])
+        step_idx = self._step_idx.tile([bs, 1])
+        stop_flags = self._stop_flags.tile([bs, 1]).cast('bool')
+        tgt_ids = self._tgt_ids.tile([bs, 1])
+        tgt_pos = self._tgt_pos.tile([bs, 1])
+        tgt_generation_mask = self._tgt_generation_mask.tile([bs, 1, 1, 1])
+        pre_ids = self._pre_ids.tile([bs, 1])
+        stop_nums = bs[None].cast('int64')
 
         # init cache_kvs
         cache_kvs = []
         for i in range(32):
-            cache_kvs.append(getattr(self, f'_kv_cache_{i}'))
+            cache = getattr(self, f'_kv_cache_{i}')
+            cache = cache.tile([1, bs, 1, 1, 1])
+            cache_kvs.append(cache)
 
         outputs = self.generate(
             inputs_embeds=inputs_embeds,
@@ -770,7 +815,7 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
         self.init_constants()
         input_spec = [
             paddle.static.InputSpec(
-                shape=[1, 286, 4096], dtype="float32", name="image_features"
+                shape=[1, 288, 4096], dtype="float32", name="image_features"
             ),  # image_features
         ]  # cache_kvs
 
