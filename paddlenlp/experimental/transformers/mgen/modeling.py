@@ -655,7 +655,7 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
 
     def init_constants(self):
         seq_length = 288
-        max_seq_length = 1024
+        max_seq_length = 512
 
         attention_mask = paddle.full([1, 1, max_seq_length, max_seq_length], 0, dtype="float16")
         attention_mask[:, :, :seq_length, :seq_length] = paddle.tril(
@@ -815,7 +815,7 @@ class MGenForMGenVLInferenceModel(MGenForCausalLMInferenceModel):
         self.init_constants()
         input_spec = [
             paddle.static.InputSpec(
-                shape=[1, 288, 4096], dtype="float32", name="image_features"
+                shape=[None, 288, 4096], dtype="float32", name="image_features"
             ),  # image_features
         ]  # cache_kvs
 
