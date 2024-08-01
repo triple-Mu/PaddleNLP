@@ -759,7 +759,7 @@ class GenerationMixin(object):
         if getattr(self, "deprecated_warnings", None) is None:
             self.deprecated_warnings = {}
 
-        use_fast = False
+        use_fast = True
         if "use_faster" in model_kwargs:
             use_fast = model_kwargs.pop("use_faster")
             if not self.deprecated_warnings.get("use_faster", False):

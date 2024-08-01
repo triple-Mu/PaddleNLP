@@ -104,7 +104,7 @@ class UNIMOEmbeddings(nn.Layer):
                 if input_ids is not None:
                     num_pad = paddle.sum((input_ids == self.pad_token_id).astype("float32"), axis=-1, keepdim=True)
                     position_ids = F.relu(
-                        paddle.expand_as(paddle.arange(end=inputs_shape[1], dtype="int64"), inputs_shape) - num_pad
+                        paddle.expand_as(paddle.arange(end=inputs_shape[1], dtype="float32"), inputs_shape) - num_pad
                     ).astype("int64")
                 else:
                     logger.warning(

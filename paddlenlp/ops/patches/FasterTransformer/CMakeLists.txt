@@ -26,6 +26,7 @@ endif()
 option(BUILD_PD "Build in PaddlePaddle mode" ON)
 option(BUILD_GPT "Build project with gpt"    ON)
 option(BUILD_ENCODER "Build project with encoder"    ON)
+option(ON_INFER "Build in PaddlePaddle mode" OFF)
 
 if(BUILD_ENCODER)
   add_definitions(-DBUILD_ENCODER)
