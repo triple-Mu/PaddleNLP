@@ -1270,7 +1270,8 @@ class FasterUNIMOText(UNIMOPretrainedModel):
 
         if self.trans_out:
             if decode_strategy.startswith("beam_search"):
-                ids = ids.transpose([1, 2, 0])
+                ids = ids[..., :num_return_sequences].transpose([1, 2, 0])
+                output_scores = output_scores[:, :num_return_sequences]
             else:
                 ids = ids.transpose([1, 0])
         return ids, output_scores
