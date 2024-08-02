@@ -800,7 +800,8 @@ class GenerationMixin(object):
             fg_args.pop("self")
             fg_args.pop("__class__", None)
             model_kwargs = fg_args.pop("model_kwargs")
-            fg_args.update(model_kwargs)
+            kwargs = fg_args.pop("kwargs")
+            fg_args.update({**kwargs, **model_kwargs})
             try:
                 if getattr(self, "_fast_entry", None) is None:
                     self._build_fast(fg_args)

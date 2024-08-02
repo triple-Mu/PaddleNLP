@@ -86,7 +86,7 @@ std::vector<paddle::Tensor> MIROCUDAForward(
     const int num_layer,
     const int bos_id,
     const int eos_id,
-    const int64_t max_len,
+    const int max_len,
     const float beam_search_diversity_rate,
     const int unk_id,
     const int mask_id,

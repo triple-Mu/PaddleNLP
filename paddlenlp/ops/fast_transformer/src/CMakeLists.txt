@@ -166,7 +166,9 @@ if(ON_INFER)
 
   cuda_add_library(decoding_infer_op ${decoding_op_files} SHARED)
   add_dependencies(decoding_infer_op extern_${THIRD_PARTY_NAME} boost)
-
+  target_link_libraries(decoding_infer_op
+  -lcublas -lcudart -ltopk -ldecoder -ldecoding -ltopk -lcuda_int8_kernels -lcuda_kernels
+  -lonline_softmax_beamsearch -ltransformer_kernels -lattention_kernels -lencoder -lnccl_utils -lnvtx_utils)
   string(REPLACE "/" ";" DEMO_PATH ${DEMO})
 
   list(LENGTH DEMO_PATH PATH_LEN)
@@ -332,5 +334,5 @@ else(ON_INFER)
 
   add_library(decoding_op SHARED ${decoding_op_files})
   add_dependencies(decoding_op extern_${THIRD_PARTY_NAME} boost)
-  target_link_libraries(decoding_op PRIVATE -lcublas -lcudart ${lib_link} ${ft_lib_link})
+  target_link_libraries(decoding_op -lcublas -lcudart -ltopk ${lib_link} ${ft_lib_link})
 endif()

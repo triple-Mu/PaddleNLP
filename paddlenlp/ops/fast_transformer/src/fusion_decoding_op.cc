@@ -62,7 +62,7 @@ std::vector<paddle::Tensor> DecodingForward(
     const int& num_layer,
     const int& bos_id,
     const int& eos_id,
-    const int64_t& max_len,
+    const int& max_len,
     const float& beam_search_diversity_rate,
     const bool& rel_len,
     const float& alpha) {
@@ -208,7 +208,7 @@ std::vector<std::vector<int64_t>> DecodingInferShape(
     const int& num_layer,
     const int& bos_id,
     const int& eos_id,
-    const int64_t& max_len,
+    const int& max_len,
     const float& beam_search_diversity_rate,
     const bool& rel_len,
     const float& alpha) {
@@ -328,7 +328,7 @@ PD_BUILD_OP(fusion_decoding)
             "num_layer: int",
             "bos_id: int",
             "eos_id: int",
-            "max_len: int64_t",
+            "max_len: int",
             "beam_search_diversity_rate: float",
             "rel_len: bool",
             "alpha: float"})
