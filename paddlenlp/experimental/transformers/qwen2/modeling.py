@@ -1641,88 +1641,106 @@ class Qwen2ForCausalLMBlockInferenceModel(GenerationBlockInferenceModel, Qwen2Pr
 
 
 class QWen2ForQWenVLInferenceModel(Qwen2ForCausalLMInferenceModel):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fp_type = paddle.float32
+
     def init_constant(self, name: str, value: paddle.Tensor):
         const = paddle.create_parameter(
-            name=f'triplemu_add_{name}',
+            name=f"triplemu_add_{name}",
             shape=value.shape,
             dtype=value.dtype,
             default_initializer=nn.initializer.Constant(0.0),
         )
         const.set_value(value)
-        setattr(self, f'_{name}', const)
+        setattr(self, f"_{name}", const)
 
     def init_constants(self):
         max_seq_length = 2048
 
         attention_mask = paddle.full([1, 1, max_seq_length, max_seq_length], 0, dtype="float16")
-        self.init_constant('attention_mask', attention_mask)
+        self.init_constant("attention_mask", attention_mask)
 
         position_ids = paddle.arange(0, max_seq_length, dtype="int64")[None]
-        self.init_constant('position_ids', position_ids)
+        self.init_constant("position_ids", position_ids)
 
         penalty_score = paddle.full([1, 1], 1.0, dtype="float32")
-        self.init_constant('penalty_score', penalty_score)
+        self.init_constant("penalty_score", penalty_score)
 
         frequency_score = paddle.full([1, 1], 0.0, dtype="float32")
-        self.init_constant('frequency_score', frequency_score)
+        self.init_constant("frequency_score", frequency_score)
 
         presence_score = paddle.full([1, 1], 0.0, dtype="float32")
-        self.init_constant('presence_score', presence_score)
+        self.init_constant("presence_score", presence_score)
 
         min_length = paddle.full([1, 1], 1, dtype="int64")
-        self.init_constant('min_length', min_length)
+        self.init_constant("min_length", min_length)
 
         max_length = paddle.full([1, 1], 9999999, dtype="int64")
-        self.init_constant('max_length', max_length)
+        self.init_constant("max_length", max_length)
 
         seq_len_encoder = paddle.full([1, 1], max_seq_length, dtype="int64")
-        self.init_constant('seq_len_encoder', seq_len_encoder)
+        self.init_constant("seq_len_encoder", seq_len_encoder)
 
         seq_len_decoder = paddle.full([1, 1], max_seq_length, dtype="int64")
-        self.init_constant('seq_len_decoder', seq_len_decoder)
+        self.init_constant("seq_len_decoder", seq_len_decoder)
 
         temperature = paddle.full([1, 1], 1.0, dtype="float32")
-        self.init_constant('temperature', temperature)
+        self.init_constant("temperature", temperature)
 
         top_p = paddle.full([1, 1], 0.0, dtype="float32")
-        self.init_constant('top_p', top_p)
+        self.init_constant("top_p", top_p)
 
         eos_token_id = paddle.to_tensor([151645, 151643], dtype="int64")
-        self.init_constant('eos_token_id', eos_token_id)
+        self.init_constant("eos_token_id", eos_token_id)
 
         step_idx = paddle.full([1, 1], 0, dtype="int64")
-        self.init_constant('step_idx', step_idx)
+        self.init_constant("step_idx", step_idx)
 
         stop_flags = paddle.full([1, 1], 0, dtype="int32")
-        self.init_constant('stop_flags', stop_flags)
+        self.init_constant("stop_flags", stop_flags)
 
         tgt_pos = paddle.full([1, 1], max_seq_length - 1, dtype="int64")
-        self.init_constant('tgt_pos', tgt_pos)
+        self.init_constant("tgt_pos", tgt_pos)
 
         tgt_ids = paddle.full([1, 1], -123, dtype="int64")
-        self.init_constant('tgt_ids', tgt_ids)
+        self.init_constant("tgt_ids", tgt_ids)
 
-        tgt_generation_mask = paddle.full([1, 1, 1, max_seq_length], 1.0, dtype="float16")
-        self.init_constant('tgt_generation_mask', tgt_generation_mask)
+        tgt_generation_mask = paddle.full([1, 1, 1, max_seq_length], 1.0, dtype=self.fp_type)
+        self.init_constant("tgt_generation_mask", tgt_generation_mask)
 
         pre_ids = paddle.full([1, max_seq_length], -100, dtype="int64")
-        self.init_constant('pre_ids', pre_ids)
+        self.init_constant("pre_ids", pre_ids)
 
-        stop_nums = paddle.full([1, ], 1, dtype="int64")
-        self.init_constant('stop_nums', stop_nums)
+        stop_nums = paddle.full(
+            [
+                1,
+            ],
+            1,
+            dtype="int64",
+        )
+        self.init_constant("stop_nums", stop_nums)
 
         # init cache_kvs
         for i in range(self.config.num_hidden_layers):
-            kv_cache = paddle.zeros([2, 1, self.config.num_key_value_heads, max_seq_length,
-                                     self.config.hidden_size // self.config.num_attention_heads], dtype="float16")
-            self.init_constant(f'kv_cache_{i}', kv_cache)
+            kv_cache = paddle.zeros(
+                [
+                    2,
+                    1,
+                    self.config.num_key_value_heads,
+                    max_seq_length,
+                    self.config.hidden_size // self.config.num_attention_heads,
+                ],
+                dtype=self.fp_type,
+            )
+            self.init_constant(f"kv_cache_{i}", kv_cache)
 
     @paddle.no_grad()
     def export(
-            self,
-            input_ids: paddle.Tensor,  # [bs, seq_len]
-            image_features: paddle.Tensor,  # [bs, seq_len, 4096]
-            img_pos: paddle.Tensor,  # [bs, 3]
+        self,
+        input_ids: paddle.Tensor,  # [bs, seq_len]
+        image_features: paddle.Tensor,  # [bs, seq_len, 4096]
+        img_pos: paddle.Tensor,  # [bs, 3]
     ) -> paddle.Tensor:
 
         max_seq_length = 2048
@@ -1745,7 +1763,8 @@ class QWen2ForQWenVLInferenceModel(Qwen2ForCausalLMInferenceModel):
 
         attention_mask = self._attention_mask.tile([bs, 1, 1, 1])
         attention_mask[:, :, :seq_len, :seq_len] = paddle.tril(
-            paddle.ones([1, 1, seq_len, seq_len], dtype="float16"))
+            paddle.ones([1, 1, seq_len, seq_len], dtype=self.fp_type)
+        )
 
         position_ids = self._position_ids.tile([bs, 1])
         position_ids = position_ids[:, :seq_len]
@@ -1769,7 +1788,7 @@ class QWen2ForQWenVLInferenceModel(Qwen2ForCausalLMInferenceModel):
         seq_len_decoder[:] = seq_len
 
         step_idx = self._step_idx.tile([bs, 1])
-        stop_flags = self._stop_flags.tile([bs, 1]).cast('bool')
+        stop_flags = self._stop_flags.tile([bs, 1]).cast("bool")
         tgt_ids = self._tgt_ids.tile([bs, 1])
 
         tgt_pos = self._tgt_pos.tile([bs, 1])
@@ -1777,12 +1796,12 @@ class QWen2ForQWenVLInferenceModel(Qwen2ForCausalLMInferenceModel):
 
         tgt_generation_mask = self._tgt_generation_mask.tile([bs, 1, 1, 1])
         pre_ids = self._pre_ids.tile([bs, 1])
-        stop_nums = bs[None].cast('int64')
+        stop_nums = bs[None].cast("int64")
 
         # init cache_kvs
         cache_kvs = []
         for i in range(self.config.num_hidden_layers):
-            cache = getattr(self, f'_kv_cache_{i}')
+            cache = getattr(self, f"_kv_cache_{i}")
             cache = cache.tile([1, bs, 1, 1, 1])
             cache_kvs.append(cache)
 
@@ -1813,6 +1832,10 @@ class QWen2ForQWenVLInferenceModel(Qwen2ForCausalLMInferenceModel):
 
     # rewrite to_static function in generation_utils.py
     def to_static(self, output_path: str, **kwargs):
+        dtype = kwargs.get("dtype")
+        if dtype is None:
+            dtype = paddle.get_default_dtype()
+        self.fp_type = dtype
         self.init_constants()
         input_spec = [
             paddle.static.InputSpec(shape=[None, None], dtype="int64", name="input_ids"),  # input_ids

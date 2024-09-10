@@ -343,10 +343,11 @@ def load_state_dict(
         if metadata.get("format", "np") == "pd":
             state_dict = {}
             from safetensors.paddle import load
-            with open(checkpoint_file, 'rb') as f:
+
+            with open(checkpoint_file, "rb") as f:
                 _state_dict = load(f.read())
                 for key in _state_dict.keys():
-                    print(f'load {key} ...')
+                    print(f"load {key} ...")
                     weight = _state_dict[key]
                     if device == "cpu":
                         with device_guard():
@@ -1820,11 +1821,7 @@ class PretrainedModel(Layer, GenerationMixin, ConversionMixin):
             model_to_load = getattr(model, cls.base_model_prefix)
             base_model_expected_keys = list(model_to_load.state_dict().keys())
             if any(key in expected_keys_not_prefixed and key not in base_model_expected_keys for key in loaded_keys):
-                # raise ValueError(
-                #     "The state dictionary of the model you are trying to load is corrupted. Are you sure it was "
-                #     "properly saved?"
-                # )
-                print(
+                logger.warning(
                     "The state dictionary of the model you are trying to load is corrupted. Are you sure it was "
                     "properly saved?"
                 )

@@ -270,7 +270,6 @@ class GenerationInferenceModel(GenerationMixin):
         **model_kwargs,
     ):
         step_idx_ori = paddle.full(shape=[1], dtype="int64", fill_value=1)
-        batch_idx = paddle.full(shape=[1], dtype="int32", fill_value=-1)
 
         # fake temp next_tokens
         batch = input_ids.shape[0] if input_ids is not None else inputs_embeds.shape[0]
@@ -346,16 +345,6 @@ class GenerationInferenceModel(GenerationMixin):
             else:
                 model_kwargs["all_input_ids"] = paddle.concat([model_kwargs["all_input_ids"], next_tokens], axis=1)
 
-            # from paddlenlp_ops import save_with_output
-            #
-            # save_with_output(
-            #     next_tokens,
-            #     batch_idx,
-            #     step_idx_ori,
-            #     "real_time_save.temp_ids",
-            #     self.config.tensor_parallel_rank,
-            # )
-
             return next_tokens, model_kwargs
 
         # encoder
@@ -389,13 +378,6 @@ class GenerationInferenceModel(GenerationMixin):
             output_ids = paddle.concat([output_ids, next_tokens], axis=-1)
             step_idx_ori += 1
 
-        # return (
-        #     next_tokens,
-        #     model_kwargs["step_idx"],
-        #     paddle.cast(model_kwargs["stop_flags"], "int32"),
-        #     model_kwargs["seq_len_decoder"],
-        #     model_kwargs["tgt_pos"],
-        # )
         return output_ids
 
 

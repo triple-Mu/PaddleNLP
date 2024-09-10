@@ -15,15 +15,17 @@
 import math
 
 import paddle
-from paddle import tensor
 import paddle.nn.functional as F
-from paddle.nn import MultiHeadAttention, TransformerEncoderLayer, TransformerEncoder
+from paddle import tensor
 from paddle.common_ops_import import convert_dtype
+from paddle.nn import MultiHeadAttention, TransformerEncoder, TransformerEncoderLayer
 
+from paddlenlp.transformers import (
+    BertForSequenceClassification,
+    PPMiniLMForSequenceClassification,
+    TinyBertForPretraining,
+)
 from paddlenlp.utils.log import logger
-from paddlenlp.transformers import PPMiniLMForSequenceClassification
-from paddlenlp.transformers import TinyBertForPretraining
-from paddlenlp.transformers import BertForSequenceClassification
 
 __all__ = ["to_distill", "calc_minilm_loss", "calc_multi_relation_loss"]
 
