@@ -65,11 +65,12 @@ __forceinline__ __device__ hip_bfloat16 add_mul<hip_bfloat16>(hip_bfloat16 a, hi
 #else
 template<>
 __forceinline__ __device__ __nv_bfloat16 add_mul<__nv_bfloat16>(__nv_bfloat16 a, __nv_bfloat16 b, __nv_bfloat16 c) {
-    float a_f = __bfloat162float(a);
-    float b_f = __bfloat162float(b);
-    float c_f = __bfloat162float(c);
-    float result_f = add_mul(a_f, b_f, c_f);
-    return __float2bfloat16(result_f);
+//     float a_f = __bfloat162float(a);
+//     float b_f = __bfloat162float(b);
+//     float c_f = __bfloat162float(c);
+//     float result_f = add_mul(a_f, b_f, c_f);
+//     return __float2bfloat16(result_f);
+       return __hmul(__hadd(a, b), c);
 }
 #endif
 
