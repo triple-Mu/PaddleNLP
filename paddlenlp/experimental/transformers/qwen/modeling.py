@@ -605,10 +605,10 @@ class QWenForQWenVLInferenceModel(QWenForCausalLMInferenceModel):
         input_spec = [
             paddle.static.InputSpec(shape=[None, None], dtype="int64", name="input_ids"),  # input_ids
             paddle.static.InputSpec(
-                shape=[None, None, None], dtype="float32", name="image_features"
+                shape=[None, None, 4096], dtype="float32", name="image_features"
             ),  # image_features
             paddle.static.InputSpec(shape=[None, 3], dtype="int64", name="img_pos"),  # img_pos
-            paddle.static.InputSpec(shape=[None, None], dtype=dtype, name="attention_mask"),  # attention_mask
+            paddle.static.InputSpec(shape=[None, 1, None, None], dtype=dtype, name="attention_mask"),  # attention_mask
             paddle.static.InputSpec(shape=[None, None], dtype="int64", name="position_ids"),  # position_ids
             paddle.static.InputSpec(shape=[None, 1], dtype="float32", name="penalty_score"),  # penalty_score
             paddle.static.InputSpec(shape=[None, 1], dtype="float32", name="frequency_score"),  # frequency_score

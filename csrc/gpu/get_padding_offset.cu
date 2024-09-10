@@ -93,7 +93,7 @@ std::vector<paddle::Tensor> GetPaddingOffset(const paddle::Tensor& input_ids,
     const int token_num_data = cpu_token_num.data<int64_t>()[0];
     auto x_remove_padding = paddle::full({token_num_data}, 0, paddle::DataType::INT64, input_ids.place());
     auto padding_offset = paddle::full({token_num_data}, 0, paddle::DataType::INT32, input_ids.place());
-    int blockSize = min((token_num_data + 32 - 1) / 32 * 32, 128);
+    int blockSize = std::min((token_num_data + 32 - 1) / 32 * 32, 128);
     GetPaddingOffsetKernel<<<bsz, 128, 0, cu_stream>>>(
       padding_offset.data<int>(), 
       cum_offsets_out.data<int>(),

@@ -64,7 +64,7 @@ from paddlenlp.transformers.model_utils import (
 from paddlenlp.transformers.qwen2.modeling import Qwen2LMHead, Qwen2PretrainingCriterion
 from paddlenlp.utils.log import logger
 
-__all__ = ["Qwen2ForCausalLMInferenceModel", "Qwen2ForCausalLMBlockInferenceModel"]
+__all__ = ["Qwen2ForCausalLMInferenceModel", "Qwen2ForCausalLMBlockInferenceModel", "QWen2ForQWenVLInferenceModel"]
 
 
 class FusedQwen2RMSNorm(nn.Layer):
@@ -1098,7 +1098,8 @@ class Qwen2InferenceModel(Qwen2PretrainedModel):
         batch_size = 1
         seq_len = 1
         if bos_token_id is None:
-            raise ValueError("`bos_token_id` should be defined when no " "`input_ids` are provided.")
+            print("`bos_token_id` should be defined when no " "`input_ids` are provided. Set default 0")
+            bos_token_id = 0
         if encoder_output is not None:
             batch_size = encoder_output.shape[0]
             seq_len = encoder_output.shape[1]
@@ -1637,3 +1638,189 @@ class Qwen2ForCausalLMBlockInferenceModel(GenerationBlockInferenceModel, Qwen2Pr
             self.qwen2.set_state_dict_fp8({k: state_dict[k] for k in state_dict.keys()})
         else:
             self.qwen2.set_state_dict({k: state_dict[k] for k in state_dict.keys()})
+
+
+class QWen2ForQWenVLInferenceModel(Qwen2ForCausalLMInferenceModel):
+    def init_constant(self, name: str, value: paddle.Tensor):
+        const = paddle.create_parameter(
+            name=f'triplemu_add_{name}',
+            shape=value.shape,
+            dtype=value.dtype,
+            default_initializer=nn.initializer.Constant(0.0),
+        )
+        const.set_value(value)
+        setattr(self, f'_{name}', const)
+
+    def init_constants(self):
+        max_seq_length = 2048
+
+        attention_mask = paddle.full([1, 1, max_seq_length, max_seq_length], 0, dtype="float16")
+        self.init_constant('attention_mask', attention_mask)
+
+        position_ids = paddle.arange(0, max_seq_length, dtype="int64")[None]
+        self.init_constant('position_ids', position_ids)
+
+        penalty_score = paddle.full([1, 1], 1.0, dtype="float32")
+        self.init_constant('penalty_score', penalty_score)
+
+        frequency_score = paddle.full([1, 1], 0.0, dtype="float32")
+        self.init_constant('frequency_score', frequency_score)
+
+        presence_score = paddle.full([1, 1], 0.0, dtype="float32")
+        self.init_constant('presence_score', presence_score)
+
+        min_length = paddle.full([1, 1], 1, dtype="int64")
+        self.init_constant('min_length', min_length)
+
+        max_length = paddle.full([1, 1], 9999999, dtype="int64")
+        self.init_constant('max_length', max_length)
+
+        seq_len_encoder = paddle.full([1, 1], max_seq_length, dtype="int64")
+        self.init_constant('seq_len_encoder', seq_len_encoder)
+
+        seq_len_decoder = paddle.full([1, 1], max_seq_length, dtype="int64")
+        self.init_constant('seq_len_decoder', seq_len_decoder)
+
+        temperature = paddle.full([1, 1], 1.0, dtype="float32")
+        self.init_constant('temperature', temperature)
+
+        top_p = paddle.full([1, 1], 0.0, dtype="float32")
+        self.init_constant('top_p', top_p)
+
+        eos_token_id = paddle.to_tensor([151645, 151643], dtype="int64")
+        self.init_constant('eos_token_id', eos_token_id)
+
+        step_idx = paddle.full([1, 1], 0, dtype="int64")
+        self.init_constant('step_idx', step_idx)
+
+        stop_flags = paddle.full([1, 1], 0, dtype="int32")
+        self.init_constant('stop_flags', stop_flags)
+
+        tgt_pos = paddle.full([1, 1], max_seq_length - 1, dtype="int64")
+        self.init_constant('tgt_pos', tgt_pos)
+
+        tgt_ids = paddle.full([1, 1], -123, dtype="int64")
+        self.init_constant('tgt_ids', tgt_ids)
+
+        tgt_generation_mask = paddle.full([1, 1, 1, max_seq_length], 1.0, dtype="float16")
+        self.init_constant('tgt_generation_mask', tgt_generation_mask)
+
+        pre_ids = paddle.full([1, max_seq_length], -100, dtype="int64")
+        self.init_constant('pre_ids', pre_ids)
+
+        stop_nums = paddle.full([1, ], 1, dtype="int64")
+        self.init_constant('stop_nums', stop_nums)
+
+        # init cache_kvs
+        for i in range(self.config.num_hidden_layers):
+            kv_cache = paddle.zeros([2, 1, self.config.num_key_value_heads, max_seq_length,
+                                     self.config.hidden_size // self.config.num_attention_heads], dtype="float16")
+            self.init_constant(f'kv_cache_{i}', kv_cache)
+
+    @paddle.no_grad()
+    def export(
+            self,
+            input_ids: paddle.Tensor,  # [bs, seq_len]
+            image_features: paddle.Tensor,  # [bs, seq_len, 4096]
+            img_pos: paddle.Tensor,  # [bs, 3]
+    ) -> paddle.Tensor:
+
+        max_seq_length = 2048
+        shape = paddle.shape(input_ids)
+        bs = shape[0]
+        seq_len = shape[1]
+
+        inputs_embeds = self.qwen2.embed_tokens(input_ids)
+        inputs_embeds_dtype = inputs_embeds.dtype
+        if inputs_embeds_dtype != paddle.float32:
+            inputs_embeds = paddle.cast(inputs_embeds, paddle.float32)
+            image_features = paddle.cast(image_features, paddle.float32)
+
+        for idx, (i, image_start_idx, image_end_idx) in enumerate(img_pos):
+            index = paddle.arange(image_start_idx, image_end_idx).unsqueeze(-1)
+            inputs_embeds[i] = paddle.scatter(inputs_embeds[i], index, image_features[idx])
+
+        if inputs_embeds_dtype != paddle.float32:
+            inputs_embeds = paddle.cast(inputs_embeds, inputs_embeds_dtype)
+
+        attention_mask = self._attention_mask.tile([bs, 1, 1, 1])
+        attention_mask[:, :, :seq_len, :seq_len] = paddle.tril(
+            paddle.ones([1, 1, seq_len, seq_len], dtype="float16"))
+
+        position_ids = self._position_ids.tile([bs, 1])
+        position_ids = position_ids[:, :seq_len]
+
+        penalty_score = self._penalty_score.tile([bs, 1])
+        frequency_score = self._frequency_score.tile([bs, 1])
+        presence_score = self._presence_score.tile([bs, 1])
+        min_length = self._min_length.tile([bs, 1])
+
+        max_length = self._max_length.tile([bs, 1])
+        max_length[:] = max_seq_length - seq_len
+
+        temperature = self._temperature.tile([bs, 1])
+        top_p = self._top_p.tile([bs, 1])
+        eos_token_id = self._eos_token_id
+
+        seq_len_encoder = self._seq_len_encoder.tile([bs, 1])
+        seq_len_encoder[:] = seq_len
+
+        seq_len_decoder = self._seq_len_decoder.tile([bs, 1])
+        seq_len_decoder[:] = seq_len
+
+        step_idx = self._step_idx.tile([bs, 1])
+        stop_flags = self._stop_flags.tile([bs, 1]).cast('bool')
+        tgt_ids = self._tgt_ids.tile([bs, 1])
+
+        tgt_pos = self._tgt_pos.tile([bs, 1])
+        tgt_pos[:] = seq_len - 1
+
+        tgt_generation_mask = self._tgt_generation_mask.tile([bs, 1, 1, 1])
+        pre_ids = self._pre_ids.tile([bs, 1])
+        stop_nums = bs[None].cast('int64')
+
+        # init cache_kvs
+        cache_kvs = []
+        for i in range(self.config.num_hidden_layers):
+            cache = getattr(self, f'_kv_cache_{i}')
+            cache = cache.tile([1, bs, 1, 1, 1])
+            cache_kvs.append(cache)
+
+        outputs = self.generate(
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            penalty_score=penalty_score,
+            frequency_score=frequency_score,
+            presence_score=presence_score,
+            min_length=min_length,
+            max_length=max_length,
+            temperature=temperature,
+            top_p=top_p,
+            eos_token_id=eos_token_id,
+            seq_len_encoder=seq_len_encoder,
+            seq_len_decoder=seq_len_decoder,
+            step_idx=step_idx,
+            stop_flags=stop_flags,
+            tgt_ids=tgt_ids,
+            tgt_pos=tgt_pos,
+            tgt_generation_mask=tgt_generation_mask,
+            pre_ids=pre_ids,
+            stop_nums=stop_nums,
+            cache_kvs=cache_kvs,
+        )
+        return outputs
+
+    # rewrite to_static function in generation_utils.py
+    def to_static(self, output_path: str, **kwargs):
+        self.init_constants()
+        input_spec = [
+            paddle.static.InputSpec(shape=[None, None], dtype="int64", name="input_ids"),  # input_ids
+            paddle.static.InputSpec(
+                shape=[None, None, self.config.hidden_size], dtype="float32", name="image_features"
+            ),  # image_features
+            paddle.static.InputSpec(shape=[None, 3], dtype="int64", name="img_pos"),  # img_pos
+        ]
+
+        model = paddle.jit.to_static(self.export, input_spec=input_spec)
+        paddle.jit.save(model, output_path, skip_prune_program=True)

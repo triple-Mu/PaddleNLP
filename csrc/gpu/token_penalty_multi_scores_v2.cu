@@ -153,7 +153,7 @@ void token_penalty_multi_scores_kernel_v2(const paddle::Tensor& pre_ids,
         bs, length, end_length);
 
     block_size = (length_id + 32 - 1) / 32 * 32;
-    block_size = min(block_size, 512);
+    block_size = std::min(block_size, 512);
     update_repeat_times_v2<<<bs, block_size, 0, cu_stream>>>(
         pre_ids.data<int64_t>(), 
         cur_len.data<int64_t>(), 
@@ -163,7 +163,7 @@ void token_penalty_multi_scores_kernel_v2(const paddle::Tensor& pre_ids,
         length_id);
     
     block_size = (length + 32 - 1) / 32 * 32;
-    block_size = min(block_size, 512);
+    block_size = std::min(block_size, 512);
     update_value_by_repeat_times_v2<DataType_><<<bs, block_size, 0, cu_stream>>>(
         repeat_times.data<int>(),
         reinterpret_cast<DataType_*>(const_cast<data_t*>(penalty_scores.data<data_t>())),
@@ -175,7 +175,7 @@ void token_penalty_multi_scores_kernel_v2(const paddle::Tensor& pre_ids,
         length);
 
     block_size = (length_bad_words + 32 - 1) / 32 * 32;
-    block_size = min(block_size, 512);
+    block_size = std::min(block_size, 512);
     ban_bad_words<DataType_><<<bs, block_size, 0, cu_stream>>>(
         reinterpret_cast<DataType_*>(const_cast<data_t*>(logits.data<data_t>())),
         bad_tokens.data<int64_t>(),
